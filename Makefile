@@ -1,10 +1,10 @@
 all: execli exesrv 
 
 execli: client.c
-	gcc -o chatcli client.c -pthread
+	gcc -o clichat client.c -pthread
 
 exesrv: server.c
-	gcc -o chatsrv server.c -pthread
+	gcc -o srvchat server.c -pthread
 
-clear: chatcli chatsrv
-	rm chatcli chatsrv
+clear: clichat srvchat
+	rm clichat srvchat

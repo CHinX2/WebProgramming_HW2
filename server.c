@@ -7,10 +7,13 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+
 struct client_info {
 	int sockno;
+	char* usrname;
 	char ip[INET_ADDRSTRLEN];
 };
+
 int clients[100];
 int n = 0;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -28,6 +31,7 @@ void sendtoall(char *msg,int curr)
 	}
 	pthread_mutex_unlock(&mutex);
 }
+
 void *recvmg(void *sock)
 {
 	struct client_info cl = *((struct client_info *)sock);
