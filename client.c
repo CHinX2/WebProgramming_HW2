@@ -33,6 +33,7 @@ int main(int argc, char *argv[])
 	char res[600];
 	char ip[INET_ADDRSTRLEN];
 	int len;
+	char buf[512];
 
 	if(argc > 3) 
 	{
@@ -53,7 +54,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	inet_ntop(AF_INET, (struct sockaddr *)&client_addr, ip, INET_ADDRSTRLEN);
-	send(sockmsg, username, strlen(username),0);
+	send(sockmsg, username, strlen(username),0); //send usrname to server
 	
 	printf("Connected to %s, start chatting...\n",ip);
 	printf("If you want to send a message to the specific user,\nplease follow the format : \"to<[Usrname]>[YourMsg]\"\n");
