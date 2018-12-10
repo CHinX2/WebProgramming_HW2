@@ -21,6 +21,7 @@ struct nameset {
 struct nameset clients[100];
 
 int n = 0;
+int sentsuccess = 0;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 void sendtoall(char *msg,int curr)
 {
@@ -43,19 +44,23 @@ void sendtoall(char *msg,int curr)
 void sendtotar(char *msg, int curr, char *tarname)
 {
 	int i;
+	sentsuccess = 0;
 	pthread_mutex_lock(&mutex);
 	for(i = 0; i < n; i++)
 	{
-		if(clients[i].fd != curr && strcmp(clients[i].usrname,tarname)==0)
+		if(strcmp(clients[i].usrname,tarname)==0)
 		{
 			if(send(clients[i].fd,msg,strlen(msg),0) < 0)
 			{
 				perror("sending failure");
 				continue;
 			}
+			sentsuccess++;
 		}
 	}
 	pthread_mutex_unlock(&mutex);
+	//can't find the target user, print error msg
+	if(sentsuccess == 0) write(curr,"[Warning : User not found]\n",strlen("[Warning : User not found]\n"));
 }
 
 void *recvmg(void *sock)
@@ -74,6 +79,7 @@ void *recvmg(void *sock)
 		char* check = strstr(msg, sendtotar_kw);
 		if(check != NULL)
 		{
+			//get target name
 			char *tmp = check+3;
 			int k=0;
 			while(*tmp!='>')
@@ -83,7 +89,12 @@ void *recvmg(void *sock)
 				k++;
 			}
 			tmp++;
-			sendtotar(tmp, cl.sockno, tarname);
+			*check = '\0';
+			//get new msg
+			char newmsg[500] = "[*]";
+			strcat(newmsg, msg); 
+			strcat(newmsg, tmp); 
+			sendtotar(newmsg, cl.sockno, tarname);
 		}
 		else sendtoall(msg,cl.sockno);
 		memset(msg,'\0',sizeof(msg));
@@ -105,6 +116,7 @@ void *recvmg(void *sock)
 	n--; //max sock num -1
 	pthread_mutex_unlock(&mutex);
 }
+
 int main(int argc,char *argv[])
 {
 	struct sockaddr_in master_addr,client_addr;
@@ -161,9 +173,10 @@ int main(int argc,char *argv[])
 		}
 		pthread_mutex_lock(&mutex);
 		inet_ntop(AF_INET, (struct sockaddr *)&client_addr, ip, INET_ADDRSTRLEN);
+		//get username
 		recv(client_sock,clients[n].usrname,50,0);
 		//inform user of socket number
-		printf("New user connected : socket fd %d, ip %s, port %d\n", client_sock, ip, portno);
+		printf("New connected : usrname\t%s\t, socket fd\t%d\t, ip\t%s\n", clients[n].usrname, client_sock, ip);
 		cl.sockno = client_sock;
 		strcpy(cl.ip, ip);
 		clients[n].fd = client_sock; //add new socket to socket list

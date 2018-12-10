@@ -55,7 +55,8 @@ int main(int argc, char *argv[])
 	inet_ntop(AF_INET, (struct sockaddr *)&client_addr, ip, INET_ADDRSTRLEN);
 	send(sockmsg, username, strlen(username),0);
 	
-	printf("connected to %s, start chatting\n",ip);
+	printf("Connected to %s, start chatting...\n",ip);
+	printf("If you want to send a message to the specific user,\nplease follow the format : \"to<[Usrname]>[YourMsg]\"\n");
 	pthread_create(&recvt,NULL,recvmg,&sockmsg);
 	while(fgets(msg,500,stdin) > 0) 
 	{
@@ -65,7 +66,7 @@ int main(int argc, char *argv[])
 		len = write(sockmsg,res,strlen(res));
 		if(len < 0) 
 		{
-			perror("message not sent");
+			perror("[message not sent]");
 			exit(1);
 		}
 		memset(msg,'\0',sizeof(msg));
