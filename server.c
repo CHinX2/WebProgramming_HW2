@@ -78,9 +78,9 @@ void sendtotar(char *msg, int curr, char *tarname)
 {
 	int i;
 	char filetrans_kw[7] = "<file>";
-	char filename[100] = "\0";
 	char revbuf[512];
 	sentsuccess = 0;
+
 	pthread_mutex_lock(&mutex);
 	for(i = 0; i < n; i++)
 	{
@@ -89,28 +89,15 @@ void sendtotar(char *msg, int curr, char *tarname)
 			char* check = strstr(msg, filetrans_kw);
 			if(check!=NULL)
 			{
-				//receive file from client
-				strcpy(filename,check+6);
-				filename[strlen(filename)-1]='\0';
-				FILE *fp = fopen(filename, "r");
-				if(fp == NULL)
-					printf("File %s Cannot be opened file on server.\n", filename);
-				else{
-					bzero(revbuf, 512); 
-					int fr_block_sz = 0;
-					while((fr_block_sz = fread(revbuf, sizeof(char), 512, fp))>0)
-					{
-						if(send(clients[i].fd, revbuf, fr_block_sz, 0) < 0)
-						{
-							perror("File write failed on server.\n");
-							exit(1);
-						}
-						bzero(revbuf, 512);
-					}
-					printf("Ok sent to client!\n");
-					close(clients[i].fd);
-					printf("Ok received from client!\n");
-					fclose(fp);
+				char acceptfile[3];
+				send(clients[i].fd,"File accept? (y/n) ",strlen("File accept? (y/n) "),0);
+				recv(clients[i].fd, acceptfile,3,0);
+
+				recv(curr,revbuf,512,0);
+				if(send(clients[i].fd,revbuf,strlen(revbuf),0) < 0) 
+				{
+					perror("sending failure");
+					continue;
 				}
 			}
 			else{

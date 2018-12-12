@@ -11,11 +11,37 @@ void *recvmg(void *sock)
 {
 	int their_sock = *((int *)sock);
 	char msg[500];
-	int len;
+	char acceptfile[3] = "\0";
+	int len, len2;
+	char buf[512];
+
+
 	while((len = recv(their_sock,msg,500,0)) > 0) 
 	{
 		msg[len] = '\0';
-		fputs(msg,stdout);
+		if(strcmp("File accept? (y/n) ", msg)==0)
+		{
+			fputs(msg,stdout);
+			scanf("%s", acceptfile);
+			send(their_sock, acceptfile, 3, 0);
+			if(strstr(acceptfile, "y")!=NULL)
+			{
+				FILE *fp = fopen("download.txt","w");
+				bzero(buf, 512); 
+				while((len2 = recv(their_sock,buf,512,0))>0)
+				{
+					buf[len] = '\0';
+					fprintf(fp,"%s",buf);
+					bzero(buf, 512); 
+				}
+				fclose(fp);
+			}
+			fflush(stdin);
+
+		}
+		else{
+			fputs(msg,stdout);
+		}
 		memset(msg,'\0',sizeof(msg));
 	}
 }
@@ -34,6 +60,8 @@ int main(int argc, char *argv[])
 	char ip[INET_ADDRSTRLEN];
 	int len;
 	char buf[512];
+	char filetrans_kw[7] = "<file>";
+	char *filename;
 
 	if(argc > 3) 
 	{
@@ -58,18 +86,63 @@ int main(int argc, char *argv[])
 	
 	printf("Connected to %s, start chatting...\n",ip);
 	printf("If you want to send a message to the specific user,\nplease follow the format : \"to<[Usrname]>[YourMsg]\"\n");
+	printf("If you want to send a file,\nplease follow the format : \"to<[Usrname]><file>[filename]\"\n");
+	
 	pthread_create(&recvt,NULL,recvmg,&sockmsg);
 	while(fgets(msg,500,stdin) > 0) 
 	{
-		strcpy(res,username);
-		strcat(res,":");
-		strcat(res,msg);
-		len = write(sockmsg,res,strlen(res));
-		if(len < 0) 
+		
+		filename = strstr(msg, filetrans_kw);
+		
+		if(filename!=NULL)
 		{
-			perror("[message not sent]");
-			exit(1);
+			filename += 6;
+			*(filename+strlen(filename)-1) = '\0';
+
+			//printf("%s\n",filename);
+			FILE *fp = fopen(filename, "rb");
+			if (fp == NULL) {
+                    perror("open send file");
+                    // exit(EXIT_FAILURE);
+                    exit(1);
+            }
+			else{
+				len = send(sockmsg,msg,strlen(msg),0);
+				if(len < 0) 
+				{
+					perror("[message not sent]");
+					exit(1);
+				}
+
+				bzero(buf, 512); 
+				int fr_block_sz = 0;
+				while((fr_block_sz = fread(buf, sizeof(char), 512, fp))>0)
+				{
+					if(send(sockmsg, buf, fr_block_sz, 0) < 0)
+					{
+						perror("File transfer fail\n");
+						exit(1);
+					}
+					bzero(buf, 512);
+				}
+				printf("[transfer finish]\n");
+				fclose(fp);
+			}
+			printf("file close\n");
+
 		}
+		else{
+			strcpy(res,username);
+			strcat(res,":");
+			strcat(res,msg);
+			len = send(sockmsg,res,strlen(res),0);
+			if(len < 0) 
+			{
+				perror("[message not sent]");
+				exit(1);
+			}
+		}
+		filename = NULL;
 		memset(msg,'\0',sizeof(msg));
 		memset(res,'\0',sizeof(res));
 	}
