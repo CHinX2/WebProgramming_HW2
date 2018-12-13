@@ -7,41 +7,55 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+
+void * send_msg(char *username, int socket_fd, struct sockaddr_in *address) {
+
+  	char msg[512];
+  	char final_msg[612];
+	
+  	while (fgets(msg, 512, stdin) != NULL) {
+      	memset(final_msg,'\0',strlen(final_msg)); // Clear final message buffer
+     	if(strncmp("<quit>",msg,6) == 0)
+		{
+			strcpy(final_msg,msg);
+			if(send(socket_fd, final_msg, strlen(final_msg)+1, 0)<0)
+	  		{
+				perror("[message not sent]");
+				exit(1);
+			}
+			memset(msg,'\0',strlen(msg));
+			exit(0);
+		}
+		else{
+			strcat(final_msg, username);
+			strcat(final_msg, " : ");
+     		strcat(final_msg, msg);
+
+			 if(send(socket_fd, final_msg, strlen(final_msg)+1, 0)<0)
+			{
+				perror("[message not sent]");
+				exit(1);
+			}
+		}
+		memset(msg,'\0',strlen(msg));
+      	
+    }
+}
+
+
 void *recvmg(void *sock)
 {
 	int their_sock = *((int *)sock);
-	char msg[500];
+	char msg[512];
 	char acceptfile[3] = "\0";
 	int len, len2;
-	char buf[512];
+	memset(msg,'\0',sizeof(msg));
 
-
-	while((len = recv(their_sock,msg,500,0)) > 0) 
+	while((len = recv(their_sock,msg,512,0))>0)
 	{
-		msg[len] = '\0';
-		if(strcmp("File accept? (y/n) ", msg)==0)
-		{
-			fputs(msg,stdout);
-			scanf("%s", acceptfile);
-			send(their_sock, acceptfile, 3, 0);
-			if(strstr(acceptfile, "y")!=NULL)
-			{
-				FILE *fp = fopen("download.txt","w");
-				bzero(buf, 512); 
-				while((len2 = recv(their_sock,buf,512,0))>0)
-				{
-					buf[len] = '\0';
-					fprintf(fp,"%s",buf);
-					bzero(buf, 512); 
-				}
-				fclose(fp);
-			}
-			fflush(stdin);
+		fputs(msg,stdout);
 
-		}
-		else{
-			fputs(msg,stdout);
-		}
+
 		memset(msg,'\0',sizeof(msg));
 	}
 }
@@ -53,10 +67,9 @@ int main(int argc, char *argv[])
 	int their_sock;
 	int their_addr_size;
 	int portno;
-	pthread_t sendt,recvt;
-	char msg[500];
+	pthread_t thread;
+	char msg[512];
 	char username[100];
-	char res[600];
 	char ip[INET_ADDRSTRLEN];
 	int len;
 	char buf[512];
@@ -88,65 +101,7 @@ int main(int argc, char *argv[])
 	printf("If you want to send a message to the specific user,\nplease follow the format : \"to<[Usrname]>[YourMsg]\"\n");
 	printf("If you want to send a file,\nplease follow the format : \"to<[Usrname]><file>[filename]\"\n");
 	
-	pthread_create(&recvt,NULL,recvmg,&sockmsg);
-	while(fgets(msg,500,stdin) > 0) 
-	{
-		
-		filename = strstr(msg, filetrans_kw);
-		
-		if(filename!=NULL)
-		{
-			filename += 6;
-			*(filename+strlen(filename)-1) = '\0';
-
-			//printf("%s\n",filename);
-			FILE *fp = fopen(filename, "rb");
-			if (fp == NULL) {
-                    perror("open send file");
-                    // exit(EXIT_FAILURE);
-                    exit(1);
-            }
-			else{
-				len = send(sockmsg,msg,strlen(msg),0);
-				if(len < 0) 
-				{
-					perror("[message not sent]");
-					exit(1);
-				}
-
-				bzero(buf, 512); 
-				int fr_block_sz = 0;
-				while((fr_block_sz = fread(buf, sizeof(char), 512, fp))>0)
-				{
-					if(send(sockmsg, buf, fr_block_sz, 0) < 0)
-					{
-						perror("File transfer fail\n");
-						exit(1);
-					}
-					bzero(buf, 512);
-				}
-				printf("[transfer finish]\n");
-				fclose(fp);
-			}
-			printf("file close\n");
-
-		}
-		else{
-			strcpy(res,username);
-			strcat(res,":");
-			strcat(res,msg);
-			len = send(sockmsg,res,strlen(res),0);
-			if(len < 0) 
-			{
-				perror("[message not sent]");
-				exit(1);
-			}
-		}
-		filename = NULL;
-		memset(msg,'\0',sizeof(msg));
-		memset(res,'\0',sizeof(res));
-	}
-	pthread_join(recvt,NULL);
-	close(sockmsg);
+	pthread_create(&thread,NULL,recvmg,&sockmsg);
+	send_msg(username,sockmsg,&client_addr);
 
 }

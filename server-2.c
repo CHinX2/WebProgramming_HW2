@@ -29,9 +29,8 @@ struct nameset {
 	char usrname[50];
 };
 
-struct nameset clients[10];
+struct nameset clients[100];
 
-int listenfd;
 int n = 0;
 int sentsuccess = 0;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -87,36 +86,30 @@ void sendtotar(char *msg, int curr, char *tarname)
 	{
 		if(strcmp(clients[i].usrname, tarname) == 0)
 		{
-			if(send(clients[i].fd,msg,strlen(msg),0) < 0) 
+			char* check = strstr(msg, filetrans_kw);
+			if(check!=NULL)
 			{
-				perror("sending failure");
-				continue;
+				char acceptfile[3];
+				send(clients[i].fd,"File accept? (y/n) ",strlen("File accept? (y/n) "),0);
+				recv(clients[i].fd, acceptfile,3,0);
+				if(strstr("y",acceptfile)!=NULL)
+				{
+					send(curr,"start",strlen("start"),0);
+					recv(curr,revbuf,512,0);
+					if(send(clients[i].fd,revbuf,strlen(revbuf),0) < 0) 
+					{
+						perror("sending failure");
+						continue;
+					}
+				}
+
 			}
-			sentsuccess++;
-		}
-	}
-	pthread_mutex_unlock(&mutex);
-	//can't find the target user, print error msg
-	if(sentsuccess == 0 ) write(curr,"[Warning : User not found]\n",strlen("[Warning : User not found]\n"));
-}
-
-// send file to the specific user
-void filetotar(char *msg, int curr, char *tarname)
-{
-	int i;
-	char filetrans_kw[7] = "<file>";
-	char revbuf[512];
-	sentsuccess = 0;
-
-	pthread_mutex_lock(&mutex);
-	for(i = 0; i < n; i++)
-	{
-		if(strcmp(clients[i].usrname, tarname) == 0)
-		{
-			if(send(clients[i].fd,msg,strlen(msg),0) < 0) 
-			{
-				perror("sending failure");
-				continue;
+			else{
+				if(send(clients[i].fd,msg,strlen(msg),0) < 0) 
+				{
+					perror("sending failure");
+					continue;
+				}
 			}
 			sentsuccess++;
 		}
@@ -130,47 +123,27 @@ void *recvmg(void *sock)
 {
 	struct client_info cl = *((struct client_info *)sock);
 	char msg[500];
+	char sendtotar_kw[4] = "to<";
+	char showusr_kw[7] = "<show>";
 	char tarname[50]={'\0'};
-	char* tar;
-	int retval;
 	int len;
 	int i;
 	int j;
-
-	while(1)
+	while((len = recv(cl.sockno,msg,500,0)) > 0)
 	{
-		if((len = recv(cl.sockno,msg,512,0)) > 0)
-		{
-			msg[len] = '\0';
+		msg[len] = '\0';
 
-			if(strncmp("<quit>",msg,6)==0)
-			{
-				pthread_mutex_lock(&mutex);
-				printf("%s disconnected\n",cl.ip);
-				for(i = 0; i < n; i++) 
-				{
-					if(clients[i].fd == cl.sockno) 
-					{
-						j = i;
-						while(j < n-1)
-						{
-							clients[j] = clients[j+1];
-							j++;
-						}
-						close(cl.sockno);
-					}
-				}
-				n--; //max sock num -1	
-				pthread_mutex_unlock(&mutex);
-			}
-			else if(strstr(msg,"<show>")!=NULL)
-			{
-				showusr(cl.sockno);
-			}
-			else if((tar=strstr(msg, "to<"))!=NULL)
+		char* check = strstr(msg, showusr_kw); //check keyword "<show>"
+		if(check != NULL)
+		{
+			showusr(cl.sockno);
+		}
+		else{
+			check = strstr(msg, sendtotar_kw); //check keyword "to<"
+			if(check != NULL)
 			{
 				//get target name
-				char *tmp = tar+3;
+				char *tmp = check+3;
 				int k=0;
 				while(*tmp!='>')
 				{
@@ -179,50 +152,33 @@ void *recvmg(void *sock)
 					k++;
 				}
 				tmp++;
-				*tar='\0';
+				*check = '\0';
 				//get new msg
 				char newmsg[500] = "[*]";
 				strcat(newmsg, msg); 
 				strcat(newmsg, tmp); 
 				sendtotar(newmsg, cl.sockno, tarname);
 			}
-			else if((tar=strstr(msg, "file<"))!=NULL)
-			{
-				//get target name
-				char *tmp = tar+5;
-				int k=0;
-				while(*tmp!='>')
-				{
-					tarname[k] = *tmp;
-					tmp++;
-					k++;
-				}
-				tmp++;
-				*tar='\0';
-				//get new msg
-				char filename[500] = "[*]";
-				strcat(filename, tmp); 
-				filetotar(filename, cl.sockno, tarname);
-			}
 			else sendtoall(msg,cl.sockno);
 			memset(msg,'\0',sizeof(msg));
 		}
 	}
-}
-
-void quit(void)
-{
-	char msg[10];
-    while(1)
-    {
-        scanf("%s",msg);
-        if(strcmp("quit",msg)==0)
-        {
-            printf("Byebye...\n");
-            close(listenfd);
-            exit(0);
-        }
-    }
+	pthread_mutex_lock(&mutex);
+	printf("%s disconnected\n",cl.ip);
+	for(i = 0; i < n; i++) 
+	{
+		if(clients[i].fd == cl.sockno) 
+		{
+			j = i;
+			while(j < n-1)
+			{
+				clients[j] = clients[j+1];
+				j++;
+			}
+		}
+	}
+	n--; //max sock num -1
+	pthread_mutex_unlock(&mutex);
 }
 
 int main(int argc,char *argv[])
@@ -231,9 +187,9 @@ int main(int argc,char *argv[])
 	int master_sock;
 	int client_sock;
 	socklen_t client_addr_size;
-	int portno = 9999;
-	pthread_t thread;
-	char msg[512];
+	int portno;
+	pthread_t sendt,recvt;
+	char msg[500];
 	int len;
 	struct client_info cl;
 	char ip[INET_ADDRSTRLEN];
@@ -247,11 +203,6 @@ int main(int argc,char *argv[])
 
 	//creat a master socket
 	master_sock = socket(AF_INET,SOCK_STREAM,0);
-	if(master_sock < 0)
-	{
-		printf("Socket created fail");
-		exit(1);
-	}
 	memset(master_addr.sin_zero,'\0',sizeof(master_addr.sin_zero));
 	master_addr.sin_family = AF_INET;
 	master_addr.sin_port = htons(portno);
@@ -267,15 +218,14 @@ int main(int argc,char *argv[])
 	}
 
 	printf("Listening on port %d ...\n",portno);
-	//pending connection limit : 10
-	if(listen(master_sock,10) != 0) 
+	//pending connection limit : 5
+	if(listen(master_sock,5) != 0) 
 	{
 		perror("listening unsuccessful");
 		exit(1);
 	}
 
 	printf("Waiting for connections...\n");
-	pthread_create(&thread,NULL,(void*)(&quit),NULL);
 
 	while(1)
 	{
@@ -288,7 +238,7 @@ int main(int argc,char *argv[])
 		inet_ntop(AF_INET, (struct sockaddr *)&client_addr, ip, INET_ADDRSTRLEN);
 
 		//get username
-		recv(client_sock,clients[n].usrname,100,0);
+		recv(client_sock,clients[n].usrname,50,0);
 
 		//inform user of socket number
 		printf("New connected : usrname\t%s\t, socket fd\t%d\t, ip\t%s\n", clients[n].usrname, client_sock, ip);
@@ -297,7 +247,7 @@ int main(int argc,char *argv[])
 		clients[n].fd = client_sock; //add new socket to socket list
 		n++; //max sock num +1
 
-		pthread_create(&thread, NULL, recvmg, &cl);
+		pthread_create(&recvt, NULL, recvmg, &cl);
 		pthread_mutex_unlock(&mutex);
 	}
 	return 0;
