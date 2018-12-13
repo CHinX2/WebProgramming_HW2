@@ -5,7 +5,7 @@
 // (1) 查看有哪些使用者正在server線上					- done
 // (2) 送出訊息給所有連到同一server的client				- done
 // (3) 指定傳送訊息給正在線上的某個使用者				  - done
-// (4) 也可以傳送檔案給另一個使用者，對方可決定是否接收		- fail
+// (4) 也可以傳送檔案給另一個使用者，對方可決定是否接收		- done
 //---
 // Last edited: 2018/12/11
 
@@ -74,12 +74,13 @@ void sendtoall(char *msg,int curr)
 	pthread_mutex_unlock(&mutex);
 }
 
-// send msg to the specific user
-void sendtotar(char *msg, int curr, char *tarname)
+// send file to the specific user
+void filetotar(char *filename, int curr, char *tarname)
 {
 	int i;
-	char filetrans_kw[7] = "<file>";
-	char revbuf[512];
+	char buf[512];
+	char agree[3];
+	char ask[50];
 	sentsuccess = 0;
 
 	pthread_mutex_lock(&mutex);
@@ -87,10 +88,21 @@ void sendtotar(char *msg, int curr, char *tarname)
 	{
 		if(strcmp(clients[i].usrname, tarname) == 0)
 		{
-			if(send(clients[i].fd,msg,strlen(msg),0) < 0) 
+			send(clients[i].fd,"File transfer agree? (y/n) ",strlen("File transfer agree? (y/n) "),0);
+			recv(clients[i].fd,agree,3,0);
+			if(strncmp("y",agree,1)==0)
 			{
-				perror("sending failure");
-				continue;
+				send(curr, "getfile", strlen("getfile"),0);
+				recv(curr,ask,50,0);
+				printf("send %s\n",filename);
+				
+				send(curr, filename, strlen(filename),0);
+				recv(curr,buf,512,0);
+				if(send(clients[i].fd,buf,strlen(buf),0) < 0)
+				{
+					perror("sending failure");
+					continue;
+				}
 			}
 			sentsuccess++;
 		}
@@ -100,12 +112,10 @@ void sendtotar(char *msg, int curr, char *tarname)
 	if(sentsuccess == 0 ) write(curr,"[Warning : User not found]\n",strlen("[Warning : User not found]\n"));
 }
 
-// send file to the specific user
-void filetotar(char *msg, int curr, char *tarname)
+// send msg to the specific user
+void sendtotar(char *msg, int curr, char *tarname)
 {
 	int i;
-	char filetrans_kw[7] = "<file>";
-	char revbuf[512];
 	sentsuccess = 0;
 
 	pthread_mutex_lock(&mutex);
@@ -199,10 +209,8 @@ void *recvmg(void *sock)
 				}
 				tmp++;
 				*tar='\0';
-				//get new msg
-				char filename[500] = "[*]";
-				strcat(filename, tmp); 
-				filetotar(filename, cl.sockno, tarname);
+				
+				filetotar(tmp, cl.sockno, tarname);
 			}
 			else sendtoall(msg,cl.sockno);
 			memset(msg,'\0',sizeof(msg));
